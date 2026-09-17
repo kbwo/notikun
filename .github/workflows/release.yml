@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+        include:
+          - target: x86_64-apple-darwin
+            asset: notikun-macos-x86_64
+          - target: aarch64-apple-darwin
+            asset: notikun-macos-arm64
+          - target: x86_64-unknown-linux-gnu
+            asset: notikun-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            asset: notikun-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Compile ${{ matrix.target }}
+        run: |
+          deno compile \
+            --allow-run --allow-read --allow-write --allow-env \
+            --target ${{ matrix.target }} \
+            --output ${{ matrix.asset }} \
+            src/main.ts
+
+      - name: Checksum
+        run: shasum -a 256 ${{ matrix.asset }} > ${{ matrix.asset }}.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
